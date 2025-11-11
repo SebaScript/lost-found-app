@@ -33,9 +33,7 @@ migrate_working_dir/
 /build/
 /coverage/
 
-# Firebase configuration (sensitive keys)
-/lib/firebase_options.dart
-firebase_options.dart
+# Firebase CLI configuration
 .firebase/
 .firebaserc
 
