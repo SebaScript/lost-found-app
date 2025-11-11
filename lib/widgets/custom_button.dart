@@ -23,8 +23,7 @@ class CustomButton extends StatelessWidget {
       width: double.infinity,
       height: 52,
       decoration: BoxDecoration(
-        gradient: isSecondary ? null : AppTheme.primaryGradient,
-        color: isSecondary ? AppTheme.bgTertiary : null,
+        color: isSecondary ? AppTheme.bgTertiary : AppTheme.primaryColor,
         borderRadius: BorderRadius.circular(12),
         border: isSecondary
             ? Border.all(color: AppTheme.borderMedium, width: 2)

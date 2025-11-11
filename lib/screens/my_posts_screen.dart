@@ -207,16 +207,6 @@ class _TabButton extends StatelessWidget {
               width: 3,
             ),
           ),
-          gradient: selected
-              ? const LinearGradient(
-                  colors: [
-                    Color(0x1A10B981),
-                    Colors.transparent,
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                )
-              : null,
         ),
         child: Center(
           child: Text(

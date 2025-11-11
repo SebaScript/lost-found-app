@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import '../models/user_model.dart';
-import '../services/auth_service.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../utils/app_theme.dart';
+import 'edit_profile_screen.dart';
 import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -12,30 +13,9 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _authService = AuthService();
-  UserModel? _user;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
-  }
-
-  Future<void> _loadUserData() async {
-    if (_authService.currentUser != null) {
-      UserModel? user = await _authService.getUserData(_authService.currentUser!.uid);
-      if (mounted) {
-        setState(() {
-          _user = user;
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
   Future<void> _logout() async {
-    await _authService.signOut();
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    await authProvider.signOut();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -46,16 +26,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.bgSecondary,
-      appBar: AppBar(
-        title: const Text('Perfil'),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _user == null
-              ? const Center(child: Text('Error al cargar perfil'))
-              : SingleChildScrollView(
+    return Consumer<AuthProvider>(
+      builder: (context, authProvider, child) {
+        final user = authProvider.currentUser;
+
+        return Scaffold(
+          backgroundColor: AppTheme.bgSecondary,
+          appBar: AppBar(
+            title: const Text('Perfil'),
+          ),
+          body: authProvider.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : user == null
+                  ? const Center(child: Text('Error al cargar perfil'))
+                  : SingleChildScrollView(
                   child: Column(
                     children: [
                       // Profile Header
@@ -70,7 +54,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 width: 110,
                                 height: 110,
                                 decoration: BoxDecoration(
-                                  gradient: AppTheme.primaryGradient,
+                                  color: user.photoUrl != null
+                                      ? null
+                                      : AppTheme.primaryColor,
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white, width: 4),
                                   boxShadow: [
@@ -81,21 +67,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     ),
                                   ],
                                 ),
-                                child: Center(
-                                  child: Text(
-                                    _user!.getInitials(),
-                                    style: const TextStyle(
-                                      fontSize: 40,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
+                                child: user.photoUrl != null
+                                    ? ClipOval(
+                                        child: Image.network(
+                                          user.photoUrl!,
+                                          width: 110,
+                                          height: 110,
+                                          fit: BoxFit.cover,
+                                          errorBuilder:
+                                              (context, error, stackTrace) {
+                                            return Center(
+                                              child: Text(
+                                                user.getInitials(),
+                                                style: const TextStyle(
+                                                  fontSize: 40,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      )
+                                    : Center(
+                                        child: Text(
+                                          user.getInitials(),
+                                          style: const TextStyle(
+                                            fontSize: 40,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
                               ),
                               const SizedBox(height: 16),
                               // Name
                               Text(
-                                _user!.name,
+                                user.displayName,
                                 style: const TextStyle(
                                   fontSize: 26,
                                   fontWeight: FontWeight.w800,
@@ -106,7 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               const SizedBox(height: 8),
                               // Email
                               Text(
-                                _user!.email,
+                                user.email,
                                 style: const TextStyle(
                                   fontSize: 14,
                                   color: AppTheme.textSecondary,
@@ -127,15 +135,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
                             _StatItem(
-                              number: _user!.postsCount.toString(),
+                              number: user.postsCount.toString(),
                               label: 'Total',
                             ),
                             _StatItem(
-                              number: _user!.activePostsCount.toString(),
+                              number: user.activePostsCount.toString(),
                               label: 'Activos',
                             ),
                             _StatItem(
-                              number: _user!.resolvedPostsCount.toString(),
+                              number: user.resolvedPostsCount.toString(),
                               label: 'Resueltos',
                             ),
                           ],
@@ -149,6 +157,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Column(
                           children: [
                             _ProfileButton(
+                              icon: Icons.edit,
+                              label: 'Editar perfil',
+                              onTap: () async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          const EditProfileScreen()),
+                                );
+                                // Reload user data after edit
+                                authProvider.reloadUserData();
+                              },
+                              isDanger: false,
+                            ),
+                            const SizedBox(height: 12),
+                            _ProfileButton(
                               icon: Icons.logout,
                               label: 'Cerrar sesión',
                               onTap: _logout,
@@ -157,9 +180,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ],
                         ),
                       ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+        );
+      },
     );
   }
 }
@@ -177,15 +202,12 @@ class _StatItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        ShaderMask(
-          shaderCallback: (bounds) => AppTheme.primaryGradient.createShader(bounds),
-          child: Text(
-            number,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
+        Text(
+          number,
+          style: const TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: AppTheme.primaryColor,
           ),
         ),
         const SizedBox(height: 4),
@@ -220,13 +242,7 @@ class _ProfileButton extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: isDanger
-            ? const LinearGradient(
-                colors: [Color(0xFFFCA5A5), Color(0xFFEF4444)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              )
-            : AppTheme.primaryGradient,
+        color: isDanger ? AppTheme.errorColor : AppTheme.primaryColor,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(

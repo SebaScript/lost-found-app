@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../utils/app_theme.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
 import 'register_screen.dart';
-import 'home_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,8 +18,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _authService = AuthService();
-  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -30,32 +29,20 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    try {
-      await _authService.signInWithEmailAndPassword(
-        _emailController.text,
-        _passwordController.text,
+    bool success = await authProvider.signIn(
+      _emailController.text,
+      _passwordController.text,
+    );
+
+    if (mounted && !success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authProvider.error ?? 'Error al iniciar sesión'),
+          backgroundColor: AppTheme.errorColor,
+        ),
       );
-
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: AppTheme.errorColor,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
     }
   }
 
@@ -70,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Container(
                 width: double.infinity,
                 decoration: const BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
+                  color: AppTheme.primaryColor,
                 ),
                 padding: const EdgeInsets.symmetric(vertical: 50, horizontal: 20),
                 child: const Column(
@@ -154,11 +141,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         alignment: Alignment.centerRight,
                         child: TextButton(
                           onPressed: () {
-                            // TODO: Implement forgot password
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Funcionalidad próximamente'),
-                              ),
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => const ForgotPasswordScreen()),
                             );
                           },
                           child: const Text(
@@ -172,10 +157,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      CustomButton(
-                        text: 'Iniciar Sesión',
-                        onPressed: _login,
-                        isLoading: _isLoading,
+                      Consumer<AuthProvider>(
+                        builder: (context, authProvider, child) {
+                          return CustomButton(
+                            text: 'Iniciar Sesión',
+                            onPressed: _login,
+                            isLoading: authProvider.isLoading,
+                          );
+                        },
                       ),
                       const SizedBox(height: 24),
                       Center(

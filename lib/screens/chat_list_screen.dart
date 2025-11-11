@@ -96,7 +96,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                 width: 52,
                                 height: 52,
                                 decoration: BoxDecoration(
-                                  gradient: AppTheme.primaryGradient,
+                                  color: AppTheme.primaryColor,
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
@@ -175,7 +175,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 9, vertical: 3),
                                       decoration: BoxDecoration(
-                                        gradient: AppTheme.primaryGradient,
+                                        color: AppTheme.primaryColor,
                                         borderRadius: BorderRadius.circular(20),
                                         boxShadow: [
                                           BoxShadow(

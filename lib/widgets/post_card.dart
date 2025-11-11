@@ -47,9 +47,9 @@ class PostCard extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     decoration: BoxDecoration(
-                      gradient: post.type == PostType.lost
-                          ? AppTheme.lostGradient
-                          : AppTheme.foundGradient,
+                      color: post.type == PostType.lost
+                          ? AppTheme.lostColor
+                          : AppTheme.foundColor,
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
@@ -291,16 +291,9 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        gradient: isPrimary
-            ? AppTheme.primaryGradient
-            : (isDanger
-                ? const LinearGradient(
-                    colors: [Color(0xFFFCA5A5), Color(0xFFEF4444)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                : null),
-        color: !isPrimary && !isDanger ? AppTheme.bgTertiary : null,
+        color: isPrimary
+            ? AppTheme.primaryColor
+            : (isDanger ? AppTheme.errorColor : AppTheme.bgTertiary),
         borderRadius: BorderRadius.circular(12),
         border: !isPrimary && !isDanger
             ? Border.all(color: AppTheme.borderMedium)

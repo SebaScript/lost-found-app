@@ -1,9 +1,10 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/post_provider.dart';
 import '../models/post_model.dart';
-import '../models/user_model.dart';
-import '../services/auth_service.dart';
-import '../services/post_service.dart';
 import '../services/storage_service.dart';
 import '../utils/app_theme.dart';
 import '../widgets/custom_button.dart';
@@ -24,14 +25,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
   
-  final _authService = AuthService();
-  final _postService = PostService();
   final _storageService = StorageService();
 
   PostType _selectedType = PostType.lost;
   File? _selectedImage;
   String? _existingImageUrl;
-  bool _isLoading = false;
   bool get _isEditMode => widget.post != null;
 
   @override
@@ -95,47 +93,46 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Future<void> _savePost() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final postProvider = Provider.of<PostProvider>(context, listen: false);
 
-    try {
-      String? imageUrl = _existingImageUrl;
-
-      // Upload image if selected
-      if (_selectedImage != null) {
-        imageUrl = await _storageService.uploadPostImage(
-          _selectedImage!,
-          _authService.currentUser!.uid,
-        );
-      }
-
-      // Get user data
-      UserModel? user = await _authService.getUserData(
-        _authService.currentUser!.uid,
+    if (authProvider.currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Usuario no autenticado'),
+          backgroundColor: AppTheme.errorColor,
+        ),
       );
+      return;
+    }
 
-      PostModel post = PostModel(
-        id: _isEditMode ? widget.post!.id : null,
-        userId: _authService.currentUser!.uid,
-        userName: user?.name ?? 'Usuario',
+    bool success;
+    if (_isEditMode) {
+      success = await postProvider.updatePost(
+        postId: widget.post!.id!,
+        userId: authProvider.currentUser!.uid,
+        userName: authProvider.currentUser!.displayName,
         type: _selectedType,
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         location: _locationController.text.trim(),
-        imageUrl: imageUrl,
-        status: _isEditMode ? widget.post!.status : PostStatus.active,
-        viewCount: _isEditMode ? widget.post!.viewCount : 0,
-        messageCount: _isEditMode ? widget.post!.messageCount : 0,
-        createdAt: _isEditMode ? widget.post!.createdAt : DateTime.now(),
-        updatedAt: DateTime.now(),
+        existingImageUrl: _existingImageUrl,
+        newImageFile: _selectedImage,
       );
+    } else {
+      success = await postProvider.createPost(
+        userId: authProvider.currentUser!.uid,
+        userName: authProvider.currentUser!.displayName,
+        type: _selectedType,
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        location: _locationController.text.trim(),
+        imageFile: _selectedImage,
+      );
+    }
 
-      if (_isEditMode) {
-        await _postService.updatePost(widget.post!.id!, post);
-      } else {
-        await _postService.createPost(post);
-      }
-
-      if (mounted) {
+    if (mounted) {
+      if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_isEditMode
@@ -145,53 +142,49 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
         );
         Navigator.of(context).pop(true);
-      }
-    } catch (e) {
-      if (mounted) {
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
+            content: Text(postProvider.error ?? 'Error al guardar publicación'),
             backgroundColor: AppTheme.errorColor,
           ),
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.bgSecondary,
-      appBar: AppBar(
-        title: Text(_isEditMode ? 'Editar Publicación' : 'Nueva Publicación'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: _isLoading ? null : _savePost,
-            child: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text(
-                    'Publicar',
-                    style: TextStyle(
-                      color: AppTheme.primaryColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+    return Consumer<PostProvider>(
+      builder: (context, postProvider, child) {
+        return Scaffold(
+          backgroundColor: AppTheme.bgSecondary,
+          appBar: AppBar(
+            title: Text(_isEditMode ? 'Editar Publicación' : 'Nueva Publicación'),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            actions: [
+              TextButton(
+                onPressed: postProvider.isLoading ? null : _savePost,
+                child: postProvider.isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text(
+                        'Publicar',
+                        style: TextStyle(
+                          color: AppTheme.primaryColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+              ),
+            ],
           ),
-        ],
-      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(
@@ -260,12 +253,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: Image.file(
-                                _selectedImage!,
-                                width: double.infinity,
-                                height: double.infinity,
-                                fit: BoxFit.cover,
-                              ),
+                              child: kIsWeb
+                                  ? Image.network(
+                                      _selectedImage!.path,
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Image.file(
+                                      _selectedImage!,
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                      fit: BoxFit.cover,
+                                    ),
                             ),
                             Positioned(
                               bottom: 12,
@@ -393,12 +393,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               CustomButton(
                 text: _isEditMode ? 'Guardar cambios' : 'Publicar',
                 onPressed: _savePost,
-                isLoading: _isLoading,
+                isLoading: postProvider.isLoading,
               ),
             ],
           ),
         ),
       ),
+        );
+      },
     );
   }
 }
@@ -421,12 +423,11 @@ class _TypeOption extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          gradient: selected
+          color: selected
               ? (type == PostType.lost
-                  ? AppTheme.lostGradient
-                  : AppTheme.foundGradient)
-              : null,
-          color: !selected ? AppTheme.bgTertiary : null,
+                  ? AppTheme.lostColor
+                  : AppTheme.foundColor)
+              : AppTheme.bgTertiary,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: selected

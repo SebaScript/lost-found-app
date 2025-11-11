@@ -36,11 +36,15 @@ class ChatModel {
       receiverName: json['receiverName'] ?? '',
       lastMessage: json['lastMessage'] ?? '',
       lastMessageTime: json['lastMessageTime'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(json['lastMessageTime'])
+          ? (json['lastMessageTime'] is int
+              ? DateTime.fromMillisecondsSinceEpoch(json['lastMessageTime'])
+              : (json['lastMessageTime'] as dynamic).toDate())
           : DateTime.now(),
       unreadCount: json['unreadCount'] ?? 0,
       createdAt: json['createdAt'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(json['createdAt'])
+          ? (json['createdAt'] is int
+              ? DateTime.fromMillisecondsSinceEpoch(json['createdAt'])
+              : (json['createdAt'] as dynamic).toDate())
           : DateTime.now(),
     );
   }
@@ -54,9 +58,9 @@ class ChatModel {
       'receiverId': receiverId,
       'receiverName': receiverName,
       'lastMessage': lastMessage,
-      'lastMessageTime': lastMessageTime.millisecondsSinceEpoch,
+      'lastMessageTime': lastMessageTime,
       'unreadCount': unreadCount,
-      'createdAt': createdAt.millisecondsSinceEpoch,
+      'createdAt': createdAt,
     };
   }
 
@@ -96,7 +100,9 @@ class MessageModel {
       receiverId: json['receiverId'] ?? '',
       message: json['message'] ?? '',
       timestamp: json['timestamp'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(json['timestamp'])
+          ? (json['timestamp'] is int
+              ? DateTime.fromMillisecondsSinceEpoch(json['timestamp'])
+              : (json['timestamp'] as dynamic).toDate())
           : DateTime.now(),
       isRead: json['isRead'] ?? false,
     );
@@ -108,7 +114,7 @@ class MessageModel {
       'senderId': senderId,
       'receiverId': receiverId,
       'message': message,
-      'timestamp': timestamp.millisecondsSinceEpoch,
+      'timestamp': timestamp,
       'isRead': isRead,
     };
   }

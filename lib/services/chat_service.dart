@@ -1,10 +1,9 @@
-import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/chat_model.dart';
 
 class ChatService {
-  final DatabaseReference _database = FirebaseDatabase.instance.ref();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Create or get existing chat
   Future<String> createOrGetChat({
     required String postId,
     required String postTitle,
@@ -14,22 +13,21 @@ class ChatService {
     required String receiverName,
   }) async {
     try {
-      // Create a consistent chat ID based on post and users
       String chatId1 = '${postId}_${senderId}_$receiverId';
       String chatId2 = '${postId}_${receiverId}_$senderId';
 
-      // Check if chat exists with either ID
-      DataSnapshot snapshot1 = await _database.child('chats/$chatId1').get();
+      DocumentSnapshot snapshot1 =
+          await _firestore.collection('chats').doc(chatId1).get();
       if (snapshot1.exists) {
         return chatId1;
       }
 
-      DataSnapshot snapshot2 = await _database.child('chats/$chatId2').get();
+      DocumentSnapshot snapshot2 =
+          await _firestore.collection('chats').doc(chatId2).get();
       if (snapshot2.exists) {
         return chatId2;
       }
 
-      // Create new chat
       ChatModel newChat = ChatModel(
         id: chatId1,
         postId: postId,
@@ -43,7 +41,7 @@ class ChatService {
         createdAt: DateTime.now(),
       );
 
-      await _database.child('chats/$chatId1').set(newChat.toJson());
+      await _firestore.collection('chats').doc(chatId1).set(newChat.toJson());
       return chatId1;
     } catch (e) {
       print('Error creating/getting chat: $e');
@@ -51,7 +49,6 @@ class ChatService {
     }
   }
 
-  // Send message
   Future<void> sendMessage({
     required String chatId,
     required String senderId,
@@ -67,23 +64,27 @@ class ChatService {
         timestamp: DateTime.now(),
       );
 
-      // Add message
-      DatabaseReference messageRef = _database.child('messages/$chatId').push();
-      await messageRef.set(newMessage.toJson());
+      await _firestore
+          .collection('messages')
+          .doc(chatId)
+          .collection('messages')
+          .add(newMessage.toJson());
 
-      // Update chat with last message
-      await _database.child('chats/$chatId').update({
+      await _firestore.collection('chats').doc(chatId).update({
         'lastMessage': message,
-        'lastMessageTime': ServerValue.timestamp,
-        'unreadCount': ServerValue.increment(1),
+        'lastMessageTime': FieldValue.serverTimestamp(),
+        'unreadCount': FieldValue.increment(1),
       });
 
-      // Increment message count in post
-      DataSnapshot chatSnapshot = await _database.child('chats/$chatId').get();
+      DocumentSnapshot chatSnapshot =
+          await _firestore.collection('chats').doc(chatId).get();
       if (chatSnapshot.exists) {
-        Map<String, dynamic> chatData = Map<String, dynamic>.from(chatSnapshot.value as Map);
+        Map<String, dynamic> chatData =
+            chatSnapshot.data() as Map<String, dynamic>;
         String postId = chatData['postId'];
-        await _database.child('posts/$postId/messageCount').set(ServerValue.increment(1));
+        await _firestore.collection('posts').doc(postId).update({
+          'messageCount': FieldValue.increment(1),
+        });
       }
     } catch (e) {
       print('Error sending message: $e');
@@ -91,89 +92,88 @@ class ChatService {
     }
   }
 
-  // Get user's chats
   Stream<List<ChatModel>> getUserChats(String userId) {
-    return _database.child('chats').onValue.map((event) {
+    return _firestore
+        .collection('chats')
+        .where('senderId', isEqualTo: userId)
+        .snapshots()
+        .asyncMap((senderSnapshot) async {
+      QuerySnapshot receiverSnapshot = await _firestore
+          .collection('chats')
+          .where('receiverId', isEqualTo: userId)
+          .get();
+
       List<ChatModel> chats = [];
-      
-      if (event.snapshot.value != null) {
-        Map<dynamic, dynamic> chatsMap = event.snapshot.value as Map;
-        chatsMap.forEach((key, value) {
-          Map<String, dynamic> chatData = Map<String, dynamic>.from(value as Map);
-          chatData['id'] = key;
-          ChatModel chat = ChatModel.fromJson(chatData);
-          
-          // Include chats where user is sender or receiver
-          if (chat.senderId == userId || chat.receiverId == userId) {
-            chats.add(chat);
-          }
-        });
+
+      for (var doc in senderSnapshot.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+        chats.add(ChatModel.fromJson(data));
       }
-      
-      // Sort by last message time descending
+
+      for (var doc in receiverSnapshot.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+        chats.add(ChatModel.fromJson(data));
+      }
+
       chats.sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
       return chats;
     });
   }
 
-  // Get messages for a chat
   Stream<List<MessageModel>> getChatMessages(String chatId) {
-    return _database
-        .child('messages/$chatId')
-        .orderByChild('timestamp')
-        .onValue
-        .map((event) {
+    return _firestore
+        .collection('messages')
+        .doc(chatId)
+        .collection('messages')
+        .orderBy('timestamp', descending: false)
+        .snapshots()
+        .map((snapshot) {
       List<MessageModel> messages = [];
-      
-      if (event.snapshot.value != null) {
-        Map<dynamic, dynamic> messagesMap = event.snapshot.value as Map;
-        messagesMap.forEach((key, value) {
-          Map<String, dynamic> messageData = Map<String, dynamic>.from(value as Map);
-          messageData['id'] = key;
-          messages.add(MessageModel.fromJson(messageData));
-        });
+
+      for (var doc in snapshot.docs) {
+        Map<String, dynamic> data = doc.data();
+        data['id'] = doc.id;
+        messages.add(MessageModel.fromJson(data));
       }
-      
-      // Sort by timestamp ascending
-      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
       return messages;
     });
   }
 
-  // Mark messages as read
   Future<void> markMessagesAsRead(String chatId, String userId) async {
     try {
-      DataSnapshot snapshot = await _database.child('messages/$chatId').get();
-      
-      if (snapshot.exists) {
-        Map<dynamic, dynamic> messagesMap = snapshot.value as Map;
-        Map<String, dynamic> updates = {};
-        
-        messagesMap.forEach((key, value) {
-          Map<String, dynamic> messageData = Map<String, dynamic>.from(value as Map);
-          if (messageData['receiverId'] == userId && messageData['isRead'] == false) {
-            updates['messages/$chatId/$key/isRead'] = true;
-          }
-        });
-        
-        if (updates.isNotEmpty) {
-          await _database.update(updates);
-        }
+      QuerySnapshot snapshot = await _firestore
+          .collection('messages')
+          .doc(chatId)
+          .collection('messages')
+          .where('receiverId', isEqualTo: userId)
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      WriteBatch batch = _firestore.batch();
+
+      for (var doc in snapshot.docs) {
+        batch.update(doc.reference, {'isRead': true});
       }
 
-      // Reset unread count
-      await _database.child('chats/$chatId/unreadCount').set(0);
+      await batch.commit();
+
+      await _firestore.collection('chats').doc(chatId).update({
+        'unreadCount': 0,
+      });
     } catch (e) {
       print('Error marking messages as read: $e');
     }
   }
 
-  // Get chat by ID
   Future<ChatModel?> getChatById(String chatId) async {
     try {
-      DataSnapshot snapshot = await _database.child('chats/$chatId').get();
+      DocumentSnapshot snapshot =
+          await _firestore.collection('chats').doc(chatId).get();
       if (snapshot.exists) {
-        Map<String, dynamic> data = Map<String, dynamic>.from(snapshot.value as Map);
+        Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
         data['id'] = chatId;
         return ChatModel.fromJson(data);
       }

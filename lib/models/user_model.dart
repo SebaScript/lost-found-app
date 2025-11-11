@@ -1,7 +1,8 @@
 class UserModel {
   final String uid;
   final String email;
-  final String name;
+  final String displayName;
+  final String? photoUrl;
   final int postsCount;
   final int activePostsCount;
   final int resolvedPostsCount;
@@ -11,7 +12,8 @@ class UserModel {
   UserModel({
     required this.uid,
     required this.email,
-    required this.name,
+    required this.displayName,
+    this.photoUrl,
     this.postsCount = 0,
     this.activePostsCount = 0,
     this.resolvedPostsCount = 0,
@@ -19,40 +21,41 @@ class UserModel {
     this.updatedAt,
   });
 
-  // Convert from JSON
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       uid: json['uid'] ?? '',
       email: json['email'] ?? '',
-      name: json['name'] ?? '',
+      displayName: json['displayName'] ?? '',
+      photoUrl: json['photoUrl'],
       postsCount: json['postsCount'] ?? 0,
       activePostsCount: json['activePostsCount'] ?? 0,
       resolvedPostsCount: json['resolvedPostsCount'] ?? 0,
-      createdAt: json['createdAt'] != null
+      createdAt: json['createdAt'] is int
           ? DateTime.fromMillisecondsSinceEpoch(json['createdAt'])
-          : DateTime.now(),
+          : (json['createdAt'] as dynamic).toDate(),
       updatedAt: json['updatedAt'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(json['updatedAt'])
+          ? (json['updatedAt'] is int
+              ? DateTime.fromMillisecondsSinceEpoch(json['updatedAt'])
+              : (json['updatedAt'] as dynamic).toDate())
           : null,
     );
   }
 
-  // Convert to JSON
   Map<String, dynamic> toJson() {
     return {
       'email': email,
-      'name': name,
+      'displayName': displayName,
+      'photoUrl': photoUrl,
       'postsCount': postsCount,
       'activePostsCount': activePostsCount,
       'resolvedPostsCount': resolvedPostsCount,
-      'createdAt': createdAt.millisecondsSinceEpoch,
-      'updatedAt': updatedAt?.millisecondsSinceEpoch,
+      'createdAt': createdAt,
+      'updatedAt': updatedAt,
     };
   }
 
-  // Get initials for avatar
   String getInitials() {
-    List<String> names = name.split(' ');
+    List<String> names = displayName.split(' ');
     if (names.length >= 2) {
       return '${names[0][0]}${names[1][0]}'.toUpperCase();
     } else if (names.isNotEmpty) {
@@ -64,7 +67,8 @@ class UserModel {
   UserModel copyWith({
     String? uid,
     String? email,
-    String? name,
+    String? displayName,
+    String? photoUrl,
     int? postsCount,
     int? activePostsCount,
     int? resolvedPostsCount,
@@ -74,7 +78,8 @@ class UserModel {
     return UserModel(
       uid: uid ?? this.uid,
       email: email ?? this.email,
-      name: name ?? this.name,
+      displayName: displayName ?? this.displayName,
+      photoUrl: photoUrl ?? this.photoUrl,
       postsCount: postsCount ?? this.postsCount,
       activePostsCount: activePostsCount ?? this.activePostsCount,
       resolvedPostsCount: resolvedPostsCount ?? this.resolvedPostsCount,

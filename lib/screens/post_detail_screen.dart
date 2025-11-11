@@ -76,9 +76,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         postId: _post!.id!,
         postTitle: _post!.title,
         senderId: currentUser.uid,
-        senderName: currentUser.name,
+        senderName: currentUser.displayName,
         receiverId: _postOwner!.uid,
-        receiverName: _postOwner!.name,
+        receiverName: _postOwner!.displayName,
       );
 
       if (mounted) {
@@ -149,9 +149,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 18, vertical: 8),
                                 decoration: BoxDecoration(
-                                  gradient: _post!.type == PostType.lost
-                                      ? AppTheme.lostGradient
-                                      : AppTheme.foundGradient,
+                                  color: _post!.type == PostType.lost
+                                      ? AppTheme.lostColor
+                                      : AppTheme.foundColor,
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
                                       color: Colors.white.withOpacity(0.5),
@@ -279,7 +279,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                       width: 48,
                                       height: 48,
                                       decoration: BoxDecoration(
-                                        gradient: AppTheme.primaryGradient,
+                                        color: AppTheme.primaryColor,
                                         shape: BoxShape.circle,
                                         boxShadow: [
                                           BoxShadow(
@@ -309,7 +309,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            _postOwner!.name,
+                                            _postOwner!.displayName,
                                             style: const TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.w600,
@@ -339,7 +339,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                 width: double.infinity,
                                 height: 52,
                                 decoration: BoxDecoration(
-                                  gradient: AppTheme.primaryGradient,
+                                  color: AppTheme.primaryColor,
                                   borderRadius: BorderRadius.circular(12),
                                   boxShadow: [
                                     BoxShadow(

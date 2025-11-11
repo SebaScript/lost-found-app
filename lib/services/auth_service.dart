@@ -1,18 +1,15 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final DatabaseReference _database = FirebaseDatabase.instance.ref();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Get current user
   User? get currentUser => _auth.currentUser;
 
-  // Auth state changes stream
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  // Sign in with email and password
   Future<UserCredential?> signInWithEmailAndPassword(
       String email, String password) async {
     try {
@@ -26,26 +23,25 @@ class AuthService {
     }
   }
 
-  // Register with email and password
   Future<UserCredential?> registerWithEmailAndPassword(
-      String email, String password, String name) async {
+      String email, String password, String displayName) async {
     try {
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
 
-      // Create user document in Realtime Database
       if (result.user != null) {
         UserModel newUser = UserModel(
           uid: result.user!.uid,
           email: email.trim(),
-          name: name.trim(),
+          displayName: displayName.trim(),
           createdAt: DateTime.now(),
         );
 
-        await _database
-            .child('users/${result.user!.uid}')
+        await _firestore
+            .collection('users')
+            .doc(result.user!.uid)
             .set(newUser.toJson());
       }
 
@@ -55,17 +51,16 @@ class AuthService {
     }
   }
 
-  // Sign out
   Future<void> signOut() async {
     await _auth.signOut();
   }
 
-  // Get user data from Realtime Database
   Future<UserModel?> getUserData(String uid) async {
     try {
-      DataSnapshot snapshot = await _database.child('users/$uid').get();
+      DocumentSnapshot snapshot =
+          await _firestore.collection('users').doc(uid).get();
       if (snapshot.exists) {
-        Map<String, dynamic> data = Map<String, dynamic>.from(snapshot.value as Map);
+        Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
         data['uid'] = uid;
         return UserModel.fromJson(data);
       }
@@ -76,12 +71,22 @@ class AuthService {
     }
   }
 
-  // Update user data
+  Stream<UserModel?> getUserDataStream(String uid) {
+    return _firestore.collection('users').doc(uid).snapshots().map((snapshot) {
+      if (snapshot.exists) {
+        Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
+        data['uid'] = uid;
+        return UserModel.fromJson(data);
+      }
+      return null;
+    });
+  }
+
   Future<void> updateUserData(String uid, Map<String, dynamic> data) async {
     try {
-      await _database.child('users/$uid').update({
+      await _firestore.collection('users').doc(uid).update({
         ...data,
-        'updatedAt': ServerValue.timestamp,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
       print('Error updating user data: $e');
@@ -89,7 +94,31 @@ class AuthService {
     }
   }
 
-  // Reset password
+  Future<void> updateUserProfile({
+    required String uid,
+    String? displayName,
+    String? photoUrl,
+  }) async {
+    try {
+      Map<String, dynamic> updates = {
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (displayName != null) {
+        updates['displayName'] = displayName;
+      }
+
+      if (photoUrl != null) {
+        updates['photoUrl'] = photoUrl;
+      }
+
+      await _firestore.collection('users').doc(uid).update(updates);
+    } catch (e) {
+      print('Error updating user profile: $e');
+      throw 'Error al actualizar perfil';
+    }
+  }
+
   Future<void> resetPassword(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
@@ -98,7 +127,6 @@ class AuthService {
     }
   }
 
-  // Get error message in Spanish
   String _getAuthErrorMessage(String code) {
     switch (code) {
       case 'email-already-in-use':

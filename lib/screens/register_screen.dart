@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../utils/app_theme.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
-import 'home_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -18,8 +18,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _authService = AuthService();
-  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -43,32 +41,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    try {
-      await _authService.registerWithEmailAndPassword(
-        _emailController.text,
-        _passwordController.text,
-        _nameController.text,
-      );
+    bool success = await authProvider.register(
+      _emailController.text,
+      _passwordController.text,
+      _nameController.text,
+    );
 
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
+    if (mounted) {
+      if (success) {
+        Navigator.of(context).pop();
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
+            content: Text(authProvider.error ?? 'Error al registrar'),
             backgroundColor: AppTheme.errorColor,
           ),
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
       }
     }
   }
@@ -84,7 +74,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               Container(
                 width: double.infinity,
                 decoration: const BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
+                  color: AppTheme.primaryColor,
                 ),
                 padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
                 child: const Column(
@@ -171,10 +161,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         },
                       ),
                       const SizedBox(height: 32),
-                      CustomButton(
-                        text: 'Crear Cuenta',
-                        onPressed: _register,
-                        isLoading: _isLoading,
+                      Consumer<AuthProvider>(
+                        builder: (context, authProvider, child) {
+                          return CustomButton(
+                            text: 'Crear Cuenta',
+                            onPressed: _register,
+                            isLoading: authProvider.isLoading,
+                          );
+                        },
                       ),
                       const SizedBox(height: 24),
                       Center(

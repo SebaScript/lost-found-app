@@ -32,11 +32,10 @@ class PostModel {
     this.updatedAt,
   });
 
-  // Convert from JSON
   factory PostModel.fromJson(Map<String, dynamic> json) {
     return PostModel(
       id: json['id'],
-      userId: json['userId'] ?? '',
+      userId: json['userId'] ?? json['ownerId'] ?? '',
       userName: json['userName'] ?? '',
       type: json['type'] == 'lost' ? PostType.lost : PostType.found,
       title: json['title'] ?? '',
@@ -47,18 +46,22 @@ class PostModel {
       viewCount: json['viewCount'] ?? 0,
       messageCount: json['messageCount'] ?? 0,
       createdAt: json['createdAt'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(json['createdAt'])
+          ? (json['createdAt'] is int
+              ? DateTime.fromMillisecondsSinceEpoch(json['createdAt'])
+              : (json['createdAt'] as dynamic).toDate())
           : DateTime.now(),
       updatedAt: json['updatedAt'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(json['updatedAt'])
+          ? (json['updatedAt'] is int
+              ? DateTime.fromMillisecondsSinceEpoch(json['updatedAt'])
+              : (json['updatedAt'] as dynamic).toDate())
           : null,
     );
   }
 
-  // Convert to JSON
   Map<String, dynamic> toJson() {
     return {
       'userId': userId,
+      'ownerId': userId,
       'userName': userName,
       'type': type == PostType.lost ? 'lost' : 'found',
       'title': title,
@@ -68,8 +71,8 @@ class PostModel {
       'status': status == PostStatus.resolved ? 'resolved' : 'active',
       'viewCount': viewCount,
       'messageCount': messageCount,
-      'createdAt': createdAt.millisecondsSinceEpoch,
-      'updatedAt': updatedAt?.millisecondsSinceEpoch,
+      'createdAt': createdAt,
+      'updatedAt': updatedAt,
     };
   }
 

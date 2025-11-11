@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../models/post_model.dart';
-import '../services/auth_service.dart';
 import '../services/post_service.dart';
 import '../utils/app_theme.dart';
 import '../widgets/post_card.dart';
@@ -20,7 +21,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _postService = PostService();
-  final _authService = AuthService();
   final _searchController = TextEditingController();
   
   int _selectedIndex = 0;
@@ -44,7 +44,8 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'Encontrados':
         return _postService.getAllPosts(type: PostType.found, status: PostStatus.active);
       case 'Mis posts':
-        String? userId = _authService.currentUser?.uid;
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        String? userId = authProvider.firebaseUser?.uid;
         if (userId != null) {
           return _postService.getUserPosts(userId, status: PostStatus.active);
         }
@@ -98,7 +99,9 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              await _authService.signOut();
+              final authProvider =
+                  Provider.of<AuthProvider>(context, listen: false);
+              await authProvider.signOut();
               if (mounted) {
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -220,13 +223,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
 
                 List<PostModel> posts = snapshot.data!;
+                final authProvider =
+                    Provider.of<AuthProvider>(context, listen: false);
 
                 return ListView.builder(
                   padding: const EdgeInsets.all(20),
                   itemCount: posts.length,
                   itemBuilder: (context, index) {
                     PostModel post = posts[index];
-                    bool isMyPost = post.userId == _authService.currentUser?.uid;
+                    bool isMyPost = post.userId == authProvider.firebaseUser?.uid;
 
                     return PostCard(
                       post: post,

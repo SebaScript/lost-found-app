@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Colors from mockup
   static const Color primaryColor = Color(0xFF10B981);
   static const Color primaryLight = Color(0xFF34D399);
   static const Color primaryDark = Color(0xFF059669);
@@ -24,7 +23,6 @@ class AppTheme {
   static const Color borderLight = Color(0xFFE2E8F0);
   static const Color borderMedium = Color(0xFFCBD5E1);
 
-  // Lost & Found specific colors
   static const Color lostColor = Color(0xFFFECACA);
   static const Color lostColorDark = Color(0xFFFCA5A5);
   static const Color lostTextColor = Color(0xFF991B1B);
@@ -33,26 +31,6 @@ class AppTheme {
   static const Color foundColorDark = Color(0xFF6EE7B7);
   static const Color foundTextColor = Color(0xFF065F46);
 
-  // Gradient
-  static const LinearGradient primaryGradient = LinearGradient(
-    colors: [primaryColor, primaryDark],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
-  static const LinearGradient lostGradient = LinearGradient(
-    colors: [lostColor, lostColorDark],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
-  static const LinearGradient foundGradient = LinearGradient(
-    colors: [foundColor, foundColorDark],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
-  // Theme Data
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
