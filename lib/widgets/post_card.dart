@@ -9,6 +9,7 @@ class PostCard extends StatelessWidget {
   final VoidCallback? onChat;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final VoidCallback? onMarkResolved;
   final bool showActions;
 
   const PostCard({
@@ -18,6 +19,7 @@ class PostCard extends StatelessWidget {
     this.onChat,
     this.onEdit,
     this.onDelete,
+    this.onMarkResolved,
     this.showActions = true,
   });
 
@@ -230,36 +232,62 @@ class PostCard extends StatelessWidget {
                     top: BorderSide(color: AppTheme.borderLight),
                   ),
                 ),
-                child: Row(
+                child: Column(
                   children: [
-                    if (onChat != null)
-                      Expanded(
+                    Row(
+                      children: [
+                        if (onChat != null)
+                          Expanded(
+                            child: _ActionButton(
+                              icon: Icons.chat,
+                              label: 'Contactar',
+                              onTap: onChat!,
+                              isPrimary: true,
+                            ),
+                          ),
+                        if (onEdit != null)
+                          Expanded(
+                            child: _ActionButton(
+                              icon: Icons.edit,
+                              label: 'Editar',
+                              onTap: onEdit!,
+                              isPrimary: true,
+                            ),
+                          ),
+                        if ((onChat != null || onEdit != null) && onTap != null)
+                          const SizedBox(width: 8),
+                        if (onTap != null)
+                          Expanded(
+                            child: _ActionButton(
+                              icon: Icons.visibility,
+                              label: 'Ver más',
+                              onTap: onTap!,
+                              isPrimary: false,
+                            ),
+                          ),
+                        if (onDelete != null) ...[
+                          const SizedBox(width: 8),
+                          _ActionButton(
+                            icon: Icons.delete,
+                            label: '',
+                            onTap: onDelete!,
+                            isPrimary: false,
+                            isDanger: true,
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (onMarkResolved != null) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
                         child: _ActionButton(
-                          icon: Icons.chat,
-                          label: onEdit == null ? 'Contactar' : 'Editar',
-                          onTap: onEdit ?? onChat!,
-                          isPrimary: onEdit == null,
-                        ),
-                      ),
-                    if (onChat != null && onTap != null)
-                      const SizedBox(width: 8),
-                    if (onTap != null)
-                      Expanded(
-                        child: _ActionButton(
-                          icon: Icons.visibility,
-                          label: 'Ver más',
-                          onTap: onTap!,
+                          icon: Icons.check_circle,
+                          label: 'Resolver',
+                          onTap: onMarkResolved!,
                           isPrimary: false,
+                          isSuccess: true,
                         ),
-                      ),
-                    if (onDelete != null) ...[
-                      const SizedBox(width: 8),
-                      _ActionButton(
-                        icon: Icons.delete,
-                        label: '',
-                        onTap: onDelete!,
-                        isPrimary: false,
-                        isDanger: true,
                       ),
                     ],
                   ],
@@ -278,6 +306,7 @@ class _ActionButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool isPrimary;
   final bool isDanger;
+  final bool isSuccess;
 
   const _ActionButton({
     required this.icon,
@@ -285,26 +314,43 @@ class _ActionButton extends StatelessWidget {
     required this.onTap,
     this.isPrimary = false,
     this.isDanger = false,
+    this.isSuccess = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    Color bgColor;
+    Color textColor;
+    Color? shadowColor;
+    bool hasBorder = false;
+
+    if (isPrimary) {
+      bgColor = AppTheme.primaryColor;
+      textColor = Colors.white;
+      shadowColor = AppTheme.primaryColor;
+    } else if (isDanger) {
+      bgColor = AppTheme.errorColor;
+      textColor = Colors.white;
+      shadowColor = AppTheme.errorColor;
+    } else if (isSuccess) {
+      bgColor = AppTheme.successColor;
+      textColor = Colors.white;
+      shadowColor = AppTheme.successColor;
+    } else {
+      bgColor = AppTheme.bgTertiary;
+      textColor = AppTheme.textPrimary;
+      hasBorder = true;
+    }
+
     return Container(
       decoration: BoxDecoration(
-        color: isPrimary
-            ? AppTheme.primaryColor
-            : (isDanger ? AppTheme.errorColor : AppTheme.bgTertiary),
+        color: bgColor,
         borderRadius: BorderRadius.circular(12),
-        border: !isPrimary && !isDanger
-            ? Border.all(color: AppTheme.borderMedium)
-            : null,
-        boxShadow: isPrimary || isDanger
+        border: hasBorder ? Border.all(color: AppTheme.borderMedium) : null,
+        boxShadow: shadowColor != null
             ? [
                 BoxShadow(
-                  color: (isPrimary
-                          ? AppTheme.primaryColor
-                          : AppTheme.errorColor)
-                      .withOpacity(0.2),
+                  color: shadowColor.withOpacity(0.2),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -325,9 +371,7 @@ class _ActionButton extends StatelessWidget {
                 Icon(
                   icon,
                   size: 16,
-                  color: isPrimary || isDanger
-                      ? Colors.white
-                      : AppTheme.textPrimary,
+                  color: textColor,
                 ),
                 if (label.isNotEmpty) ...[
                   const SizedBox(width: 6),
@@ -336,9 +380,7 @@ class _ActionButton extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: isPrimary || isDanger
-                          ? Colors.white
-                          : AppTheme.textPrimary,
+                      color: textColor,
                     ),
                   ),
                 ],

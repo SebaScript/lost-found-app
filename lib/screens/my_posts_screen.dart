@@ -65,6 +65,56 @@ class _MyPostsScreenState extends State<MyPostsScreen> {
     }
   }
 
+  Future<void> _markAsResolved(String postId) async {
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Resolver publicación'),
+        content: const Text('¿Deseas marcar esta publicación como resuelta?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              'Resolver',
+              style: TextStyle(color: AppTheme.successColor),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await _postService.updatePostStatus(
+          postId,
+          PostStatus.resolved,
+          _authService.currentUser!.uid,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Publicación resuelta'),
+              backgroundColor: AppTheme.successColor,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: AppTheme.errorColor,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     String? userId = _authService.currentUser?.uid;
@@ -154,13 +204,16 @@ class _MyPostsScreenState extends State<MyPostsScreen> {
                                 ),
                               );
                             },
-                            onChat: () {
+                            onEdit: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => CreatePostScreen(post: post),
                                 ),
                               );
                             },
+                            onMarkResolved: _selectedStatus == PostStatus.active
+                                ? () => _markAsResolved(post.id!)
+                                : null,
                             onDelete: () => _deletePost(post.id!),
                           );
                         },
