@@ -106,7 +106,7 @@ class ChatService {
       List<ChatModel> chats = [];
 
       for (var doc in senderSnapshot.docs) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        Map<String, dynamic> data = doc.data();
         data['id'] = doc.id;
         chats.add(ChatModel.fromJson(data));
       }
