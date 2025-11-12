@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/post_model.dart';
+import '../models/user_model.dart';
 import '../services/post_service.dart';
+import '../services/auth_service.dart';
+import '../services/chat_service.dart';
 import '../utils/app_theme.dart';
 import '../widgets/post_card.dart';
 import 'create_post_screen.dart';
 import 'post_detail_screen.dart';
 import 'my_posts_screen.dart';
 import 'chat_list_screen.dart';
+import 'chat_screen.dart';
 import 'profile_screen.dart';
 import 'login_screen.dart';
 
@@ -21,6 +25,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _postService = PostService();
+  final _authService = AuthService();
+  final _chatService = ChatService();
   final _searchController = TextEditingController();
   
   int _selectedIndex = 0;
@@ -52,6 +58,77 @@ class _HomeScreenState extends State<HomeScreen> {
         return Stream.value([]);
       default:
         return _postService.getAllPosts(status: PostStatus.active);
+    }
+  }
+
+  Future<void> _startChat(PostModel post) async {
+    try {
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Abriendo chat...')),
+        );
+      }
+
+      // Get current user data
+      UserModel? currentUser = await _authService.getUserData(
+        _authService.currentUser!.uid,
+      );
+
+      if (currentUser == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Error: No se pudo obtener datos del usuario'),
+              backgroundColor: AppTheme.errorColor,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get post owner data
+      UserModel? postOwner = await _authService.getUserData(post.userId);
+
+      if (postOwner == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Error: No se pudo obtener datos del propietario'),
+              backgroundColor: AppTheme.errorColor,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Create or get chat
+      String chatId = await _chatService.createOrGetChat(
+        postId: post.id!,
+        postTitle: post.title,
+        senderId: currentUser.uid,
+        senderName: currentUser.displayName,
+        receiverId: postOwner.uid,
+        receiverName: postOwner.displayName,
+      );
+
+      // Navigate to chat screen
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatScreen(chatId: chatId),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al iniciar chat: $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
     }
   }
 
@@ -242,12 +319,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         );
                       },
-                      onChat: isMyPost ? null : () {
-                        // Navigate to chat
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Abriendo chat...')),
-                        );
-                      },
+                      onChat: isMyPost ? null : () => _startChat(post),
                     );
                   },
                 );
