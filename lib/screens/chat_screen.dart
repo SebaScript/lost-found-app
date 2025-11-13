@@ -84,7 +84,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (messages.isNotEmpty) {
         _lastDocument = await _getMessageDocument(messages.first);
-        _listenForNewMessages();
       }
 
       setState(() {
@@ -92,6 +91,8 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = false;
         _hasMore = messages.length >= 50;
       });
+
+      _listenForNewMessages();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
@@ -156,32 +157,46 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _listenForNewMessages() {
-    if (_messages.isEmpty) return;
-
-    DateTime lastMessageTime = _messages.last.timestamp;
+    _newMessageSubscription?.cancel();
     
-    _newMessageSubscription = _chatService
-        .listenForNewMessages(widget.chatId, lastMessageTime)
-        .listen((newMessage) {
-      if (newMessage != null && mounted) {
-        setState(() {
-          _messages.add(newMessage);
-        });
+    _newMessageSubscription = FirebaseFirestore.instance
+        .collection('messages')
+        .doc(widget.chatId)
+        .collection('messages')
+        .orderBy('timestamp', descending: false)
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+      
+      for (var change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          Map<String, dynamic> data = change.doc.data() as Map<String, dynamic>;
+          data['id'] = change.doc.id;
+          MessageModel newMessage = MessageModel.fromJson(data);
+          
+          bool alreadyExists = _messages.any((m) => m.id == newMessage.id);
+          
+          if (!alreadyExists) {
+            setState(() {
+              _messages.add(newMessage);
+            });
 
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              _scrollController.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (_scrollController.hasClients) {
+                _scrollController.animateTo(
+                  _scrollController.position.maxScrollExtent,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                );
+              }
+            });
+
+            _chatService.markMessagesAsRead(
+              widget.chatId,
+              _authService.currentUser!.uid,
             );
           }
-        });
-
-        _chatService.markMessagesAsRead(
-          widget.chatId,
-          _authService.currentUser!.uid,
-        );
+        }
       }
     });
   }
