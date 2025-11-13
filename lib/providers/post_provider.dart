@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import '../models/post_model.dart';
 import '../services/post_service.dart';
-import '../services/storage_service.dart';
 
 class PostProvider with ChangeNotifier {
   final PostService _postService = PostService();
-  final StorageService _storageService = StorageService();
 
   bool _isLoading = false;
   String? _error;
@@ -28,12 +26,6 @@ class PostProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      String? imageUrl;
-
-      if (imageFile != null) {
-        imageUrl = await _storageService.uploadPostImage(imageFile, userId);
-      }
-
       PostModel newPost = PostModel(
         userId: userId,
         userName: userName,
@@ -41,11 +33,10 @@ class PostProvider with ChangeNotifier {
         title: title,
         description: description,
         location: location,
-        imageUrl: imageUrl,
         createdAt: DateTime.now(),
       );
 
-      await _postService.createPost(newPost);
+      await _postService.createPost(newPost, imageFile);
 
       _isLoading = false;
       notifyListeners();
@@ -74,15 +65,6 @@ class PostProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      String? imageUrl = existingImageUrl;
-
-      if (newImageFile != null) {
-        if (existingImageUrl != null) {
-          await _storageService.deleteImage(existingImageUrl);
-        }
-        imageUrl = await _storageService.uploadPostImage(newImageFile, userId);
-      }
-
       PostModel updatedPost = PostModel(
         id: postId,
         userId: userId,
@@ -91,11 +73,11 @@ class PostProvider with ChangeNotifier {
         title: title,
         description: description,
         location: location,
-        imageUrl: imageUrl,
+        imageUrl: existingImageUrl,
         createdAt: DateTime.now(),
       );
 
-      await _postService.updatePost(postId, updatedPost);
+      await _postService.updatePost(postId, updatedPost, newImageFile);
 
       _isLoading = false;
       notifyListeners();
@@ -108,17 +90,12 @@ class PostProvider with ChangeNotifier {
     }
   }
 
-  Future<bool> deletePost(String postId, String userId,
-      {String? imageUrl}) async {
+  Future<bool> deletePost(String postId, String userId) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      if (imageUrl != null) {
-        await _storageService.deleteImage(imageUrl);
-      }
-
       await _postService.deletePost(postId, userId);
 
       _isLoading = false;

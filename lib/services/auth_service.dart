@@ -1,10 +1,13 @@
+import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
+import 'storage_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final StorageService _storageService = StorageService();
 
   User? get currentUser => _auth.currentUser;
 
@@ -82,22 +85,10 @@ class AuthService {
     });
   }
 
-  Future<void> updateUserData(String uid, Map<String, dynamic> data) async {
-    try {
-      await _firestore.collection('users').doc(uid).update({
-        ...data,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      print('Error updating user data: $e');
-      throw 'Error al actualizar datos del usuario';
-    }
-  }
-
   Future<void> updateUserProfile({
     required String uid,
     String? displayName,
-    String? photoUrl,
+    File? photoFile,
   }) async {
     try {
       Map<String, dynamic> updates = {
@@ -108,8 +99,16 @@ class AuthService {
         updates['displayName'] = displayName;
       }
 
-      if (photoUrl != null) {
-        updates['photoUrl'] = photoUrl;
+      if (photoFile != null) {
+        UserModel? currentUser = await getUserData(uid);
+        if (currentUser?.photoUrl != null) {
+          await _storageService.deleteImage(currentUser!.photoUrl!);
+        }
+        
+        String? photoUrl = await _storageService.uploadProfileImage(photoFile, uid);
+        if (photoUrl != null) {
+          updates['photoUrl'] = photoUrl;
+        }
       }
 
       await _firestore.collection('users').doc(uid).update(updates);

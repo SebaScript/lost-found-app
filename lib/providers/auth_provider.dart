@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
-import '../services/storage_service.dart';
 import 'dart:io';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
-  final StorageService _storageService = StorageService();
 
   UserModel? _currentUser;
   bool _isLoading = false;
@@ -99,17 +97,10 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      String? photoUrl;
-
-      if (photoFile != null) {
-        photoUrl = await _storageService.uploadProfileImage(
-            photoFile, _authService.currentUser!.uid);
-      }
-
       await _authService.updateUserProfile(
         uid: _authService.currentUser!.uid,
         displayName: displayName,
-        photoUrl: photoUrl,
+        photoFile: photoFile,
       );
 
       await reloadUserData();

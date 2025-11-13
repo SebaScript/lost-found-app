@@ -1,13 +1,37 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/post_model.dart';
+import 'storage_service.dart';
 
 class PostService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final StorageService _storageService = StorageService();
 
-  Future<String> createPost(PostModel post) async {
+  Future<String> createPost(PostModel post, File? imageFile) async {
     try {
+      String? imageUrl;
+      
+      if (imageFile != null) {
+        imageUrl = await _storageService.uploadPostImage(imageFile, post.userId);
+      }
+      
+      final postWithImage = PostModel(
+        id: post.id,
+        userId: post.userId,
+        userName: post.userName,
+        type: post.type,
+        title: post.title,
+        description: post.description,
+        location: post.location,
+        imageUrl: imageUrl ?? post.imageUrl,
+        status: post.status,
+        viewCount: post.viewCount,
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
+      );
+
       DocumentReference docRef =
-          await _firestore.collection('posts').add(post.toJson());
+          await _firestore.collection('posts').add(postWithImage.toJson());
 
       await _updateUserPostCount(post.userId, increment: true);
 
@@ -18,10 +42,34 @@ class PostService {
     }
   }
 
-  Future<void> updatePost(String postId, PostModel post) async {
+  Future<void> updatePost(String postId, PostModel post, File? newImageFile) async {
     try {
+      String? imageUrl = post.imageUrl;
+      
+      if (newImageFile != null) {
+        if (post.imageUrl != null) {
+          await _storageService.deleteImage(post.imageUrl!);
+        }
+        imageUrl = await _storageService.uploadPostImage(newImageFile, post.userId);
+      }
+      
+      final updatedPost = PostModel(
+        id: post.id,
+        userId: post.userId,
+        userName: post.userName,
+        type: post.type,
+        title: post.title,
+        description: post.description,
+        location: post.location,
+        imageUrl: imageUrl,
+        status: post.status,
+        viewCount: post.viewCount,
+        createdAt: post.createdAt,
+        updatedAt: DateTime.now(),
+      );
+
       await _firestore.collection('posts').doc(postId).update({
-        ...post.toJson(),
+        ...updatedPost.toJson(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -32,6 +80,12 @@ class PostService {
 
   Future<void> deletePost(String postId, String userId) async {
     try {
+      PostModel? post = await getPostById(postId);
+      
+      if (post?.imageUrl != null) {
+        await _storageService.deleteImage(post!.imageUrl!);
+      }
+
       await _firestore.collection('posts').doc(postId).delete();
 
       await _updateUserPostCount(userId, increment: false);
