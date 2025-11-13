@@ -15,7 +15,7 @@ Porque creemos que **ayudar también puede ser parte de la tecnología.**
 ##  Funcionalidades principales
 
 -  **Publicar objetos perdidos**  
-  Crea un post indicando qué se perdió, dónde fue y adjunta una foto para facilitar su identificación.
+  Crea un post indicando qué se perdió, dónde fue y adjunta una foto para facilitar su identificación
 
 -  **Reportar objetos encontrados**  
   Informa a la comunidad cuando encuentres algo y ayuda a que regrese con su dueño.
