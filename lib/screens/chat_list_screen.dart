@@ -79,7 +79,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             MaterialPageRoute(
                               builder: (_) => ChatScreen(chatId: chat.id!),
                             ),
-                          );
+                          ).then((_) {
+                            if (mounted) {
+                              setState(() {});
+                            }
+                          });
                         },
                         child: Container(
                           padding: const EdgeInsets.symmetric(

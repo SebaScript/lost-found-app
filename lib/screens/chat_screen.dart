@@ -82,6 +82,8 @@ class _ChatScreenState extends State<ChatScreen> {
         limit: 50,
       );
 
+      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
       if (messages.isNotEmpty) {
         _lastDocument = await _getMessageDocument(messages.first);
       }
@@ -138,6 +140,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       setState(() {
         _messages.insertAll(0, olderMessages);
+        _messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
         _isLoadingMore = false;
         _hasMore = olderMessages.length >= 50;
       });
@@ -159,10 +162,15 @@ class _ChatScreenState extends State<ChatScreen> {
   void _listenForNewMessages() {
     _newMessageSubscription?.cancel();
     
+    DateTime cutoffTime = _messages.isNotEmpty 
+        ? _messages.last.timestamp 
+        : DateTime.now().subtract(const Duration(seconds: 1));
+    
     _newMessageSubscription = FirebaseFirestore.instance
         .collection('messages')
         .doc(widget.chatId)
         .collection('messages')
+        .where('timestamp', isGreaterThan: Timestamp.fromDate(cutoffTime))
         .orderBy('timestamp', descending: false)
         .snapshots()
         .listen((snapshot) {
@@ -179,6 +187,7 @@ class _ChatScreenState extends State<ChatScreen> {
           if (!alreadyExists) {
             setState(() {
               _messages.add(newMessage);
+              _messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
             });
 
             WidgetsBinding.instance.addPostFrameCallback((_) {
