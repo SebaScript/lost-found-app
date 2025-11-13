@@ -122,6 +122,58 @@ class ChatService {
     });
   }
 
+  Future<List<MessageModel>> getMessagesPaginated(
+    String chatId, {
+    int limit = 50,
+    DocumentSnapshot? startBefore,
+  }) async {
+    try {
+      Query query = _firestore
+          .collection('messages')
+          .doc(chatId)
+          .collection('messages')
+          .orderBy('timestamp', descending: true)
+          .limit(limit);
+
+      if (startBefore != null) {
+        query = query.startAfterDocument(startBefore);
+      }
+
+      QuerySnapshot snapshot = await query.get();
+      List<MessageModel> messages = [];
+
+      for (var doc in snapshot.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+        messages.add(MessageModel.fromJson(data));
+      }
+
+      return messages.reversed.toList();
+    } catch (e) {
+      print('Error getting paginated messages: $e');
+      return [];
+    }
+  }
+
+  Stream<MessageModel?> listenForNewMessages(String chatId, DateTime after) {
+    return _firestore
+        .collection('messages')
+        .doc(chatId)
+        .collection('messages')
+        .where('timestamp', isGreaterThan: Timestamp.fromDate(after))
+        .orderBy('timestamp', descending: false)
+        .limit(1)
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.docs.isEmpty) return null;
+      
+      var doc = snapshot.docs.first;
+      Map<String, dynamic> data = doc.data();
+      data['id'] = doc.id;
+      return MessageModel.fromJson(data);
+    });
+  }
+
   Stream<List<MessageModel>> getChatMessages(String chatId) {
     return _firestore
         .collection('messages')

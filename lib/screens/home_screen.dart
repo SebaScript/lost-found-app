@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../providers/auth_provider.dart';
 import '../models/post_model.dart';
 import '../models/user_model.dart';
@@ -28,38 +29,149 @@ class _HomeScreenState extends State<HomeScreen> {
   final _authService = AuthService();
   final _chatService = ChatService();
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
+  final _firestore = FirebaseFirestore.instance;
   
   int _selectedIndex = 0;
   String _selectedFilter = 'Todos';
   String _searchQuery = '';
+  
+  List<PostModel> _posts = [];
+  bool _isLoading = false;
+  bool _hasMore = true;
+  DocumentSnapshot? _lastDocument;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPosts();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  Stream<List<PostModel>> _getPostsStream() {
-    if (_searchQuery.isNotEmpty) {
-      return _postService.searchPosts(_searchQuery);
-    }
-
-    switch (_selectedFilter) {
-      case 'Perdidos':
-        return _postService.getAllPosts(type: PostType.lost, status: PostStatus.active);
-      case 'Encontrados':
-        return _postService.getAllPosts(type: PostType.found, status: PostStatus.active);
-      case 'Mis posts':
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        String? userId = authProvider.firebaseUser?.uid;
-        if (userId != null) {
-          return _postService.getUserPosts(userId, status: PostStatus.active);
-        }
-        return Stream.value([]);
-      default:
-        return _postService.getAllPosts(status: PostStatus.active);
+  void _onScroll() {
+    if (_scrollController.position.pixels >= 
+        _scrollController.position.maxScrollExtent * 0.9) {
+      if (!_isLoading && _hasMore) {
+        _loadMorePosts();
+      }
     }
   }
+
+  Future<void> _loadPosts() async {
+    if (_isLoading) return;
+    
+    setState(() {
+      _posts = [];
+      _lastDocument = null;
+      _hasMore = true;
+    });
+
+    await _loadMorePosts();
+  }
+
+  Future<void> _loadMorePosts() async {
+    if (_isLoading || !_hasMore) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      List<PostModel> newPosts;
+      
+      if (_searchQuery.isNotEmpty) {
+        newPosts = await _postService.searchPostsPaginated(
+          _searchQuery,
+          limit: 20,
+          startAfter: _lastDocument,
+        );
+      } else if (_selectedFilter == 'Mis posts') {
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        String? userId = authProvider.firebaseUser?.uid;
+        
+        if (userId == null) {
+          setState(() {
+            _isLoading = false;
+            _hasMore = false;
+          });
+          return;
+        }
+        
+        QuerySnapshot snapshot = await _firestore
+            .collection('posts')
+            .where('ownerId', isEqualTo: userId)
+            .where('status', isEqualTo: 'active')
+            .orderBy('createdAt', descending: true)
+            .limit(20)
+            .get();
+        
+        newPosts = snapshot.docs.map((doc) {
+          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+          data['id'] = doc.id;
+          return PostModel.fromJson(data);
+        }).toList();
+        
+        if (newPosts.isNotEmpty) {
+          _lastDocument = snapshot.docs.last;
+        }
+      } else {
+        PostType? type;
+        if (_selectedFilter == 'Perdidos') type = PostType.lost;
+        if (_selectedFilter == 'Encontrados') type = PostType.found;
+        
+        newPosts = await _postService.getPostsPaginated(
+          type: type,
+          status: PostStatus.active,
+          limit: 20,
+          startAfter: _lastDocument,
+        );
+      }
+
+      if (newPosts.isEmpty) {
+        setState(() {
+          _hasMore = false;
+          _isLoading = false;
+        });
+        return;
+      }
+
+      if (_selectedFilter != 'Mis posts') {
+        DocumentSnapshot? lastDoc = await _getLastDocument(newPosts.last);
+        _lastDocument = lastDoc;
+      }
+      
+      setState(() {
+        _posts.addAll(newPosts);
+        _isLoading = false;
+        _hasMore = newPosts.length >= 20;
+      });
+    } catch (e) {
+      print('Error loading posts: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<DocumentSnapshot?> _getLastDocument(PostModel post) async {
+    try {
+      return await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(post.id)
+          .get();
+    } catch (e) {
+      print('Error getting last document: $e');
+      return null;
+    }
+  }
+
 
   Future<void> _startChat(PostModel post) async {
     try {
@@ -209,9 +321,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       setState(() {
                         _searchQuery = value;
                       });
+                      _loadPosts();
                     },
                     decoration: const InputDecoration(
-                      hintText: 'Buscar por título...',
+                      hintText: 'Buscar por título, descripción o ubicación...',
                       prefixIcon: Icon(Icons.search, color: AppTheme.textTertiary),
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -233,6 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   setState(() {
                                     _selectedFilter = filter;
                                   });
+                                  _loadPosts();
                                 },
                                 selectedColor: AppTheme.primaryColor,
                                 backgroundColor: AppTheme.bgTertiary,
@@ -262,69 +376,63 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Posts List
           Expanded(
-            child: StreamBuilder<List<PostModel>>(
-              stream: _getPostsStream(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text('Error: ${snapshot.error}'),
-                  );
-                }
-
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.inbox_outlined,
-                          size: 64,
-                          color: AppTheme.textTertiary,
+            child: _posts.isEmpty && _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _posts.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.inbox_outlined,
+                              size: 64,
+                              color: AppTheme.textTertiary,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No hay publicaciones',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: AppTheme.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No hay publicaciones',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: AppTheme.textSecondary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(20),
+                        itemCount: _posts.length + (_hasMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index == _posts.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(20),
+                              child: Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
 
-                List<PostModel> posts = snapshot.data!;
-                final authProvider =
-                    Provider.of<AuthProvider>(context, listen: false);
+                          PostModel post = _posts[index];
+                          final authProvider =
+                              Provider.of<AuthProvider>(context, listen: false);
+                          bool isMyPost = post.userId == authProvider.firebaseUser?.uid;
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: posts.length,
-                  itemBuilder: (context, index) {
-                    PostModel post = posts[index];
-                    bool isMyPost = post.userId == authProvider.firebaseUser?.uid;
-
-                    return PostCard(
-                      post: post,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => PostDetailScreen(postId: post.id!),
-                          ),
-                        );
-                      },
-                      onChat: isMyPost ? null : () => _startChat(post),
-                    );
-                  },
-                );
-              },
-            ),
+                          return PostCard(
+                            post: post,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      PostDetailScreen(postId: post.id!),
+                                ),
+                              );
+                            },
+                            onChat: isMyPost ? null : () => _startChat(post),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

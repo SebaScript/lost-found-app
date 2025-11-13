@@ -111,6 +111,45 @@ class PostService {
     }
   }
 
+  Future<List<PostModel>> getPostsPaginated({
+    PostType? type,
+    PostStatus? status,
+    int limit = 20,
+    DocumentSnapshot? startAfter,
+  }) async {
+    try {
+      Query query = _firestore.collection('posts');
+
+      if (status != null) {
+        query = query.where('status', isEqualTo: status == PostStatus.active ? 'active' : 'resolved');
+      }
+
+      if (type != null) {
+        query = query.where('type', isEqualTo: type == PostType.lost ? 'lost' : 'found');
+      }
+
+      query = query.orderBy('createdAt', descending: true).limit(limit);
+
+      if (startAfter != null) {
+        query = query.startAfterDocument(startAfter);
+      }
+
+      QuerySnapshot snapshot = await query.get();
+      List<PostModel> posts = [];
+
+      for (var doc in snapshot.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+        posts.add(PostModel.fromJson(data));
+      }
+
+      return posts;
+    } catch (e) {
+      print('Error getting paginated posts: $e');
+      return [];
+    }
+  }
+
   Stream<List<PostModel>> getAllPosts({
     PostType? type,
     PostStatus? status,
@@ -156,6 +195,52 @@ class PostService {
 
       return posts;
     });
+  }
+
+  Future<List<PostModel>> searchPostsPaginated(String searchTerm, {
+    int limit = 50,
+    DocumentSnapshot? startAfter,
+  }) async {
+    try {
+      if (searchTerm.isEmpty) {
+        return await getPostsPaginated(
+          status: PostStatus.active,
+          limit: limit,
+          startAfter: startAfter,
+        );
+      }
+
+      Query query = _firestore
+          .collection('posts')
+          .where('status', isEqualTo: 'active')
+          .orderBy('createdAt', descending: true)
+          .limit(limit);
+
+      if (startAfter != null) {
+        query = query.startAfterDocument(startAfter);
+      }
+
+      QuerySnapshot snapshot = await query.get();
+      List<PostModel> posts = [];
+      String searchLower = searchTerm.toLowerCase();
+
+      for (var doc in snapshot.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+        PostModel post = PostModel.fromJson(data);
+
+        if (post.title.toLowerCase().contains(searchLower) ||
+            post.description.toLowerCase().contains(searchLower) ||
+            post.location.toLowerCase().contains(searchLower)) {
+          posts.add(post);
+        }
+      }
+
+      return posts;
+    } catch (e) {
+      print('Error searching posts: $e');
+      return [];
+    }
   }
 
   Stream<List<PostModel>> searchPosts(String searchTerm) {

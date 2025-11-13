@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import '../models/chat_model.dart';
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
@@ -21,19 +23,34 @@ class _ChatScreenState extends State<ChatScreen> {
   final _authService = AuthService();
 
   ChatModel? _chat;
+  List<MessageModel> _messages = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  DocumentSnapshot? _lastDocument;
+  StreamSubscription? _newMessageSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadChatData();
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    _newMessageSubscription?.cancel();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels <= 50) {
+      if (!_isLoadingMore && _hasMore) {
+        _loadOlderMessages();
+      }
+    }
   }
 
   Future<void> _loadChatData() async {
@@ -41,16 +58,145 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) {
       setState(() {
         _chat = chat;
-        _isLoading = false;
       });
 
-      // Mark messages as read
+      await _loadInitialMessages();
+
       if (chat != null) {
         await _chatService.markMessagesAsRead(
           widget.chatId,
           _authService.currentUser!.uid,
         );
       }
+    }
+  }
+
+  Future<void> _loadInitialMessages() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      List<MessageModel> messages = await _chatService.getMessagesPaginated(
+        widget.chatId,
+        limit: 50,
+      );
+
+      if (messages.isNotEmpty) {
+        _lastDocument = await _getMessageDocument(messages.first);
+        _listenForNewMessages();
+      }
+
+      setState(() {
+        _messages = messages;
+        _isLoading = false;
+        _hasMore = messages.length >= 50;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      });
+    } catch (e) {
+      print('Error loading initial messages: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_isLoadingMore || !_hasMore) return;
+
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    try {
+      List<MessageModel> olderMessages = await _chatService.getMessagesPaginated(
+        widget.chatId,
+        limit: 50,
+        startBefore: _lastDocument,
+      );
+
+      if (olderMessages.isEmpty) {
+        setState(() {
+          _hasMore = false;
+          _isLoadingMore = false;
+        });
+        return;
+      }
+
+      double scrollPosition = _scrollController.position.pixels;
+      double maxScrollExtent = _scrollController.position.maxScrollExtent;
+
+      if (olderMessages.isNotEmpty) {
+        _lastDocument = await _getMessageDocument(olderMessages.first);
+      }
+
+      setState(() {
+        _messages.insertAll(0, olderMessages);
+        _isLoadingMore = false;
+        _hasMore = olderMessages.length >= 50;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          double newMaxScrollExtent = _scrollController.position.maxScrollExtent;
+          _scrollController.jumpTo(scrollPosition + (newMaxScrollExtent - maxScrollExtent));
+        }
+      });
+    } catch (e) {
+      print('Error loading older messages: $e');
+      setState(() {
+        _isLoadingMore = false;
+      });
+    }
+  }
+
+  void _listenForNewMessages() {
+    if (_messages.isEmpty) return;
+
+    DateTime lastMessageTime = _messages.last.timestamp;
+    
+    _newMessageSubscription = _chatService
+        .listenForNewMessages(widget.chatId, lastMessageTime)
+        .listen((newMessage) {
+      if (newMessage != null && mounted) {
+        setState(() {
+          _messages.add(newMessage);
+        });
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              _scrollController.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+
+        _chatService.markMessagesAsRead(
+          widget.chatId,
+          _authService.currentUser!.uid,
+        );
+      }
+    });
+  }
+
+  Future<DocumentSnapshot?> _getMessageDocument(MessageModel message) async {
+    try {
+      return await FirebaseFirestore.instance
+          .collection('messages')
+          .doc(widget.chatId)
+          .collection('messages')
+          .doc(message.id)
+          .get();
+    } catch (e) {
+      print('Error getting message document: $e');
+      return null;
     }
   }
 
@@ -70,17 +216,6 @@ class _ChatScreenState extends State<ChatScreen> {
         receiverId: receiverId,
         message: message,
       );
-
-      // Scroll to bottom
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -126,53 +261,44 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           // Messages List
           Expanded(
-            child: StreamBuilder<List<MessageModel>>(
-              stream: _chatService.getChatMessages(widget.chatId),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _messages.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No hay mensajes aún',
+                          style: TextStyle(
+                            color: AppTheme.textTertiary,
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(20),
+                        itemCount: _messages.length + (_isLoadingMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (_isLoadingMore && index == 0) {
+                            return const Padding(
+                              padding: EdgeInsets.all(20),
+                              child: Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
 
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
+                          int messageIndex = _isLoadingMore ? index - 1 : index;
+                          MessageModel message = _messages[messageIndex];
+                          bool isSent = message.senderId == currentUserId;
 
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'No hay mensajes aún',
-                      style: TextStyle(
-                        color: AppTheme.textTertiary,
-                      ),
-                    ),
-                  );
-                }
+                          String? lastDate;
+                          if (messageIndex > 0) {
+                            lastDate = TimeUtils.formatDate(
+                                _messages[messageIndex - 1].timestamp);
+                          }
 
-                List<MessageModel> messages = snapshot.data!;
-
-                // Scroll to bottom when messages load
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (_scrollController.hasClients) {
-                    _scrollController.jumpTo(
-                      _scrollController.position.maxScrollExtent,
-                    );
-                  }
-                });
-
-                String? lastDate;
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(20),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    MessageModel message = messages[index];
-                    bool isSent = message.senderId == currentUserId;
-
-                    // Check if we need to show date separator
-                    String currentDate = TimeUtils.formatDate(message.timestamp);
-                    bool showDateSeparator = lastDate != currentDate;
-                    lastDate = currentDate;
+                          String currentDate =
+                              TimeUtils.formatDate(message.timestamp);
+                          bool showDateSeparator = lastDate != currentDate;
 
                     return Column(
                       children: [
@@ -255,10 +381,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         const SizedBox(height: 12),
                       ],
                     );
-                  },
-                );
-              },
-            ),
+                        },
+                      ),
           ),
 
           // Message Input
